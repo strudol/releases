@@ -1,0 +1,1371 @@
+<head>
+    <meta charset="UTF-8" />
+    <title>StruDoL Structured Domain Language</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/17.0.2/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/17.0.2/umd/react-dom.production.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" />
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/react-jsonschema-form/1.8.1/react-jsonschema-form.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.0/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css">
+    <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mark.js/8.11.1/mark.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+
+    <style>
+    </style>
+</head>
+
+<body>
+    <div id="sidebar">
+        <div class="accordion mt-3 mb-3" id="accordionExample">
+            <div class="accordion-item">
+                <span class="accordion-header">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#collapse2">
+                        <i class="bi bi-funnel-fill"></i> Filter tags
+                    </button>
+                </span>
+                <div id="collapse2" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div id="tag-filters" class="mb-2 d-flex flex-wrap"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <input type="text" id="searchInput" class="form-control mb-3" placeholder="Search section...">
+        <div id="sections-list"></div>
+    </div>
+
+    <div id="main-content" class="p-4">
+        <nav class="navbar">
+            <div class="container-fluid">
+                <button class="btn btn-outline" id="toggleSidebar">☰</button>
+                <button id="exportButton" class="btn">Export</button>
+            </div>
+        </nav>
+        <main class="col-md-9 col-lg-10 p-3">
+            <div id="hero" class="hero">
+                <div class="container">
+                    <h1 class="display-4 fw-bold">UPLOAD YOUR DOCUMENT</h1>
+                    <p class="lead">Drag and drop your <strong>Doc.JSON</strong> file here or use the button below.</p>
+
+                    <div id="dropZone" class="drop-zone">
+                        <p class="mb-0">Drop your file here</p>
+                    </div>
+
+                    <input type="file" id="fileInput" class="d-none" accept=".json">
+                    <button class="btn btn-upload" onclick="document.getElementById('fileInput').click();">Select
+                        File</button>
+                </div>
+            </div>
+            <div id="form-container">
+                <input type="file" id="fileInput" accept=".json" class="form-control mb-3" />
+                <div id="form-content"></div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="footer text-center mt-3">Powered by StruDoL (Structured Domain Language)</footer>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            dropZone.style.background = "rgba(0, 0, 0, 0.1)";
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.background = "rgba(0, 0, 0, 0.05)";
+        });
+
+        dropZone.addEventListener('drop', (event) => {
+            event.preventDefault();
+            dropZone.style.background = "rgba(0, 0, 0, 0.05)";
+            const file = event.dataTransfer.files[0];
+            if (file && file.name.endsWith('.json')) {
+                // alert(`File received: ${file.name}`);
+                handleFile(file); // Call the function to handle the file
+            } else {
+                alert("Please upload a valid .json file");
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                // alert(`Selected file: ${fileInput.files[0].name}`);
+                handleFile(fileInput.files[0]); // Call the function to handle the file
+            }
+        });
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const formData = JSON.parse(e.target.result);
+                    console.log("JSON File data:", formData);
+
+                    window.currentFileName = file.name.replace(/\.json$/, "");
+                    window.currentFormData = formData;
+                    renderForm(formData); // This will be defined in the React script
+
+                    // Reiniciar los filtros activos
+                    window.activeTagFilters = ['all'];
+                    document.getElementById("hero").style.display = "none";
+                } catch (error) {
+                    alert("Error parsing JSON file: " + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+
+    <script type="text/babel">
+        if (window.JSONSchemaForm) {
+            const JSONSchemaForm = window.JSONSchemaForm.default;
+
+            // --- Configuración Global ---
+            const MARKDOWN_URL_BASE = "https://raw.githubusercontent.com/plastilinn/docs/refs/heads/main/pages/sections/";
+            const WEBHOOK_URL = "https://n8n.lucascervera.com/webhook/strudolchatbot";
+            const EDITOR_DEFAULT_HEIGHT = 100; // Altura por defecto del editor SimpleMDE
+            const SIMPLEMDE_WIDGET_OPTIONS = {
+                placeholder: "Escribe aquí..." // Placeholder por defecto del editor
+            };
+
+            const schema = {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "$id": "http://example.com/document.schema.json",
+                "title": "Document",
+                "type": "object",
+                "properties": {
+                    "sections": {
+                        "type": "array",
+                        "title": "Sections",
+                        "description": "List of sections in the document.",
+                        "items": {
+                            "type": "object",
+                            "title": "Section",
+                            "description": "A section of the document.",
+                            "properties": {
+                                "title": {
+                                    "type": "string",
+                                    "title": "Title",
+                                    "description": "Section title. Should be short and precise (5-10 words)."
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "title": "Content",
+                                    "description": "Section content. Can be plain text or Markdown."
+                                },
+                                "tags": {
+                                    "type": "string",
+                                    "title": "Tags",
+                                    "description": "Tags associated with the section."
+                                },
+                                "lists": {
+                                    "type": "array",
+                                    "title": "Lists",
+                                    "items": {
+                                        "type": "object",
+                                        "title": "List",
+                                        "properties": {
+                                            "itemType": {
+                                                "type": "string",
+                                                "title": "Item Type",
+                                                "description": "Type of the list items."
+                                            },
+                                            "items": {
+                                                "type": "array",
+                                                "title": "Items",
+                                                "description": "List items. Their order indicates importance.",
+                                                "items": {
+                                                    "type": "object",
+                                                    "title": "List Item",
+                                                    "description": "A list item.",
+                                                    "properties": {
+                                                        "name": {
+                                                            "type": "string",
+                                                            "title": "Name",
+                                                            "description": "Item name. Should be short and precise (5-10 words)."
+                                                        },
+                                                        "content": {
+                                                            "type": "string",
+                                                            "title": "Content",
+                                                            "description": "Item content. Can be plain text or Markdown."
+                                                        },
+                                                        "tags": {
+                                                            "type": "string",
+                                                            "title": "Tags",
+                                                            "description": "Tags associated with the item."
+                                                        }
+                                                    },
+                                                    "required": ["name"]
+                                                }
+                                            }
+                                        },
+                                        "required": ["itemType", "items"]
+                                    }
+                                }
+                            },
+                            "required": ["title"]
+                        }
+                    }
+                },
+                "required": ["sections"]
+            }
+
+            const uiSchema = {
+                "ui:rootFieldId": "strudol-form",
+                "ui:options": {
+                    "label": false
+                },
+                "ui:submitButtonOptions": {
+                    "norender": true
+                },
+                "sections": {
+                    "ui:options": {
+                        "orderable": true,
+                        "removable": true,
+                        "label": false
+                    },
+                    "items": {
+                        "ui:order": ["title", "content", "tags", "lists"],
+                        "title": {
+                            "ui:widget": "text",
+                            "ui:placeholder": "Section title...",
+                            "ui:options": {
+                                "label": false,
+                                "description": false
+                            }
+                        },
+                        "content": {
+                            "ui:widget": "simplemde",
+                            "ui:options": {
+                                "placeholder": "Section content...",
+                                "label": false,
+                                "description": false
+                            },
+                        },
+                        "tags": {
+                            "ui:widget": "text",
+                            "ui:placeholder": "Tags...",
+                            "ui:options": {
+                                "label": false,
+                                "description": false
+                            }
+                        },
+                        "lists": {
+                            "ui:options": {
+                                "orderable": true,
+                                "removable": true,
+                                "label": false
+                            },
+                            "items": {
+                                "ui:order": ["itemType", "items"],
+                                "itemType": {
+                                    "ui:widget": "text",
+                                    "ui:placeholder": "Item type...",
+                                    "ui:options": {
+                                        "label": false,
+                                        "description": false
+                                    }
+                                },
+                                "items": {
+                                    "ui:options": {
+                                        "orderable": true,
+                                        "removable": true,
+                                    },
+                                    "items": {
+                                        "ui:order": ["name", "content", "tags"],
+                                        "name": {
+                                            "ui:widget": "text",
+                                            "ui:placeholder": "Item name...",
+                                            "ui:options": {
+                                                "label": false,
+                                                "description": false
+                                            }
+                                        },
+                                        "content": {
+                                            "ui:widget": "simplemde",
+                                            "ui:options": {
+                                                "placeholder": "Item content...",
+                                                "label": false,
+                                                "description": false
+                                            },
+                                        },
+                                        "tags": {
+                                            "ui:widget": "text",
+                                            "ui:placeholder": "Tags...",
+                                            "ui:options": {
+                                                "label": false,
+                                                "description": false
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // --- Componentes y Funciones ---
+
+            const SimpleMDEWidget = (props) => {
+                const {
+                    id,
+                    value,
+                    onChange,
+                    options = SIMPLEMDE_WIDGET_OPTIONS // Usa el objeto de configuración aquí
+                } = props;
+                const editorRef = React.useRef(null);
+
+                React.useEffect(() => {
+                    let simplemde = new SimpleMDE({
+                        element: editorRef.current,
+                        initialValue: value || "",
+                        placeholder: options.placeholder || SIMPLEMDE_WIDGET_OPTIONS.placeholder, // Opcional: usa un valor por defecto si no se proporciona
+                    });
+
+                    // Establecer la altura máxima del editor
+                    simplemde.codemirror.setSize(null, EDITOR_DEFAULT_HEIGHT);
+
+                    simplemde.codemirror.on("change", () => {
+                        onChange(simplemde.value());
+                    });
+
+                    return () => {
+                        if (simplemde) {
+                            simplemde.toTextArea();
+                            simplemde = null;
+                        }
+                    };
+                }, []);
+
+                return <textarea ref={
+                    editorRef
+                }
+                    className="simplemde-textarea" />;
+            };
+
+            const widgets = {
+                simplemde: SimpleMDEWidget,
+            };
+
+            function generateIdFromPath(path) {
+                return path.join("-").replace(/\s+/g, "-").toLowerCase();
+            }
+
+            function TabbedPanel({
+                formData,
+                editing,
+                onChange
+            }) {
+                const [activeTab, setActiveTab] = React.useState("title");
+
+                const handleChange = (field, value) => {
+                    if (onChange) {
+                        onChange({
+                            ...formData,
+                            [field]: value
+                        });
+                    }
+                };
+
+                return (
+                    <div>
+                        <ul className="nav nav-tabs">
+                            <li className="nav-item">
+                                <button
+                                    className={`nav-link ${activeTab === "title" ? "active" : ""}`}
+                                    onClick={() => setActiveTab("title")}
+                                >
+                                    Title
+                                </button>
+                            </li>
+                            <li className="nav-item">
+                                <button
+                                    className={`nav-link ${activeTab === "content" ? "active" : ""}`}
+                                    onClick={() => setActiveTab("content")}
+                                >
+                                    Content
+                                </button>
+                            </li>
+                            <li className="nav-item">
+                                <button
+                                    className={`nav-link ${activeTab === "tags" ? "active" : ""}`}
+                                    onClick={() => setActiveTab("tags")}
+                                >
+                                    Tags
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div className="tab-content mt-2">
+                            {activeTab === "title" && (
+                                <div className="tab-pane active">
+                                    {editing ? (
+                                        <input type="text" value={formData.title || ""}
+                                            onChange={(e) => handleChange("title", e.target.value)}
+                                            className="form-control" />
+                                    ) : (
+                                        <h1>{formData.title}</h1>
+                                    )}
+                                </div>
+                            )}
+
+                            {activeTab === "content" && (
+                                <div className="tab-pane active">
+                                    {editing ? (
+                                        <textarea value={formData.content || ""}
+                                            onChange={(e) => handleChange("content", e.target.value)}
+                                            className="form-control" rows="5" />
+                                    ) : (
+                                        <div dangerouslySetInnerHTML={{ __html: renderMarkdown(formData.content || '') }}></div>
+                                    )}
+                                </div>
+                            )}
+
+                            {activeTab === "tags" && (
+                                <div className="tab-pane active">
+                                    {editing ? (
+                                        <input type="text" value={formData.tags || ""}
+                                            onChange={(e) => handleChange("tags", e.target.value)}
+                                            className="form-control" />
+                                    ) : (
+                                        <div>
+                                            {formData.tags &&
+                                                formData.tags.split(",").map((tag, i) => (
+                                                    <span key={i} className="badge bg-secondary m-4">
+                                                        {tag.trim()}
+                                                    </span>
+                                                ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            function CollapsibleObjectFieldTemplate(props) {
+                if (props.schema.title === "List Item") {
+                    const nameProperty = props.properties.find(prop => prop.name === "name");
+                    const otherProperties = props.properties.filter(prop => prop.name !== "name");
+                    const collapseId = `collapse-${props.idSchema.$id}`;
+
+                    return (
+                        <div className="card mb-2">
+                            <div className="card-header"
+                                data-bs-toggle="collapse"
+                                data-bs-target={`#${collapseId}`}
+                                aria-expanded="false"
+                                aria-controls={collapseId}
+                                style={{ cursor: "pointer" }}>
+                                <div className="d-flex justify-content-between align-items-center">
+                                    <h6 className="mb-0">{nameProperty ? nameProperty.content : "List Item"}</h6>
+                                    <button className="btn btn-sm m-1">
+                                        <i className="bi bi-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id={collapseId} className="collapse card-body">
+                                {otherProperties.map(prop => (
+                                    <div key={prop.name} className="mb-2">
+                                        {prop.content}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div>
+                        {props.title && <h5>{props.title}</h5>}
+                        {props.description && <p>{props.description}</p>}
+                        {props.properties.map(prop => (
+                            <div key={prop.name} className="mb-2">
+                                {prop.content}
+                            </div>
+                        ))}
+                    </div>
+                );
+            }
+
+            const SectionButtons = ({ isEditing, setIsEditing, handleInfoClick, handleChatbotClick, formData, index }) => {
+                return (
+                    <div className="button-group">
+                        <button
+                            className={`btn ${isEditing ? "save-button btn-lg btn-success" : "btn-sm"}`}
+                            onClick={() => setIsEditing(index, !isEditing)}
+                            title={isEditing ? "Save" : "Edit"}
+                        >
+                            <i className={`bi ${isEditing ? "bi-save" : "bi-pencil"}`}></i>
+                            {isEditing ? " Save" : " Edit"}
+                        </button>
+                        <button
+                            className="btn btn-sm"
+                            onClick={() => handleInfoClick(formData)}
+                            title="Show section info"
+                        >
+                            <i className="bi bi-book"></i> Info
+                        </button>
+                        <button
+                            className="btn btn-sm"
+                            onClick={() => handleChatbotClick(formData)}
+                            title="Open AI Chatbot"
+                        >
+                            <i className="bi bi-chat-dots"></i> AI
+                        </button>
+                    </div>
+                );
+            };
+
+            const ItemButtons = ({ index, items, element }) => {
+                return (
+                    <div className="button-group d-flex gap-2 m-2">
+                        {index > 0 && (
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    element.onReorderClick(index, index - 1)();
+                                }}
+                            >
+                                <i className="bi bi-arrow-up"></i>
+                            </button>
+                        )}
+                        {index < items.length - 1 && (
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    element.onReorderClick(index, index + 1)();
+                                }}
+                            >
+                                <i className="bi bi-arrow-down"></i>
+                            </button>
+                        )}
+                        <button
+                            className="btn btn-danger btn-sm"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                element.onDropIndexClick(index)();
+                            }}
+                        >
+                            <i className="bi bi-trash"></i>
+                        </button>
+                    </div>
+                );
+            };
+
+            const ListItemRenderer = ({ item, itemIndex }) => {
+                return (
+                    <li key={itemIndex} className="list-item">
+                        <div className="list-item-header">
+                            <div className="list-item-title">
+                                <strong className="list-item-name">{item.name}</strong>
+                                {item.tags && (
+                                    <div className="tags-container">
+                                        {item.tags.split(",").map((tag, tagIndex) => (
+                                            <span key={tagIndex} className="badge bg-secondary">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {item.content && (
+                            <div className="list-item-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.content) }}></div>
+                        )}
+                    </li>
+                );
+            };
+
+            const ListRenderer = ({ list, path, getSanitizedPath }) => {
+                const listIndex = path[path.length - 1];
+                const sanitizedListPath = getSanitizedPath(path);
+                const listId = `list-item-${sanitizedListPath}`;
+
+                return (
+                    <div key={listIndex} id={listId} className="section-list">
+                        <h4 className="list-title">{list.itemType} list</h4>
+                        {list.items && Array.isArray(list.items) && list.items.length > 0 && (
+                            <ul className="list">
+                                {list.items.map((item, itemIndex) => (
+                                    <ListItemRenderer item={item} itemIndex={itemIndex} />
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                );
+            };
+
+            const SectionRenderer = ({ element, index, isEditing, setIsEditing, handleInfoClick, handleChatbotClick, formData, getSanitizedPath, path }) => {
+                const tagsArray = formData.tags ? formData.tags.split(",").map((tag) => tag.trim()) : [];
+
+                return (
+                    <>
+                        <div className="section-title-container">
+                            <div className="title-with-tags">
+                                <h1 className="section-title">{formData.title}</h1>
+                                {tagsArray.length > 0 && (
+                                    <div className="tags-container">
+                                        {tagsArray.map((tag, tagIndex) => (
+                                            <span key={tagIndex} className="badge bg-secondary">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <SectionButtons
+                                isEditing={isEditing}
+                                setIsEditing={setIsEditing}
+                                handleInfoClick={handleInfoClick}
+                                handleChatbotClick={handleChatbotClick}
+                                formData={formData}
+                                index={index}
+                            />
+                        </div>
+
+                        {!isEditing ? (
+                            <div className="section-content-wrapper">
+                                {formData.content && (
+                                    <div className="section-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(formData.content) }}></div>
+                                )}
+                                {formData.lists && Array.isArray(formData.lists) && formData.lists.length > 0 && (
+                                    <div className="section-lists">
+                                        {formData.lists.map((list, listIndex) => {
+                                            const listPath = [...path, "lists", listIndex];
+                                            return <ListRenderer list={list} path={listPath} getSanitizedPath={getSanitizedPath} />;
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="section-edit-wrapper">
+                                {element.children}
+                            </div>
+                        )}
+                    </>
+                );
+            };
+
+
+
+            function ArrayFieldTemplate(props) {
+                const [editingStates, setEditingStates] = React.useState(
+                    props.items ? props.items.map(() => false) : []
+                );
+                const [infoVisible, setInfoVisible] = React.useState(false);
+                const [markdownContent, setMarkdownContent] = React.useState("");
+                const [shouldExport, setShouldExport] = React.useState(false);
+                const infoSidebarRef = React.useRef(null);
+                const [chatbotVisible, setChatbotVisible] = React.useState(false);
+                const chatbotSidebarRef = React.useRef(null);
+                const [chatMessages, setChatMessages] = React.useState([]);
+                const [currentSectionContent, setCurrentSectionContent] = React.useState("");
+                const [currentSection, setCurrentSection] = React.useState(null);
+                const [shouldOpenChatbot, setShouldOpenChatbot] = React.useState(false);
+
+                const [isLoading, setIsLoading] = React.useState(false);
+                const [chatbotInitialized, setChatbotInitialized] = React.useState(false);
+
+                React.useEffect(() => {
+                    setEditingStates(props.items ? props.items.map(() => false) : []);
+                }, [props.items ? props.items.length : 0]);
+
+
+                const getSanitizedPath = (path) => {
+                    return path.join('-').replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
+                };
+
+                const getMarkdownUrl = (sectionTitle) => {
+                    const sanitizedTitle = sectionTitle
+                        .replace(/[^a-zA-Z0-9]+/g, "_")
+                        .replace(/^_|_$/g, "");
+                    const url = `${MARKDOWN_URL_BASE}${sanitizedTitle}.md`;
+                    return url;
+                };
+
+                const fetchMarkdown = async (url) => {
+                    setIsLoading(true);
+                    try {
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        const text = await response.text();
+                        setMarkdownContent(text);
+                    } catch (error) {
+                        console.error("Error fetching markdown:", error);
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
+                const toggleInfoSidebar = async (sectionTitle) => {
+                    const url = getMarkdownUrl(sectionTitle);
+                    if (infoVisible) {
+                        setInfoVisible(false);
+                    } else {
+                        await fetchMarkdown(url);
+                        setInfoVisible(true);
+                    }
+                };
+
+                React.useEffect(() => {
+                    if (infoSidebarRef.current) {
+                        infoSidebarRef.current.style.right = infoVisible ? "0px" : "-600px";
+                    }
+                }, [infoVisible]);
+
+                const setIsEditing = (index, value) => {
+                    setEditingStates(prevStates => {
+                        const newStates = [...prevStates];
+                        newStates[index] = value;
+                        return newStates;
+                    });
+
+                    if (value === false) {
+                        setShouldExport(true);
+                    }
+
+                };
+
+                React.useEffect(() => {
+                    if (shouldExport) {
+                        exportFiles();
+                        setShouldExport(false);
+                    }
+                }, [shouldExport]);
+
+                const toggleChatbotSidebar = () => {
+                    setChatbotVisible(!chatbotVisible);
+
+                    if (!chatbotInitialized) {
+                        const closeChatbotButton = document.getElementById('closeChatbotButton');
+                        const sendButton = document.getElementById('sendButton');
+
+                        closeChatbotButton.addEventListener('click', () => {
+                            const chatbotSidebar = document.getElementById('chatbotSidebar');
+                            chatbotSidebar.classList.remove('open');
+                        });
+
+                        sendButton.addEventListener('click', () => {
+                            const chatInput = document.getElementById('chatInput');
+                            const question = chatInput.value.trim();
+                            if (question) {
+                                handleSendMessage();
+                                chatInput.value = '';
+                            }
+                        });
+
+                        setChatbotInitialized(true);
+                    }
+                };
+
+                React.useEffect(() => {
+                    if (chatbotSidebarRef.current) {
+                        chatbotSidebarRef.current.style.right = chatbotVisible ? "0px" : "-600px";
+                    }
+                }, [chatbotVisible]);
+
+                function processContentFields(data, path = []) {
+                    if (typeof data === 'object' && data !== null) {
+                        for (const key in data) {
+                            const currentPath = [...path, key]; // Construir la ruta actual
+
+                            if (key === 'content' && typeof data[key] === 'string') {
+                                console.log(`processContentFields: Processing content field at path: ${currentPath.join('.')}`);
+                                console.log(`processContentFields: Original content: ${data[key]}`);
+
+                                const boldRegex = /\*\*([^*]+)\*\*/g;
+                                let match;
+                                let newContent = "";
+
+                                while ((match = boldRegex.exec(data[key])) !== null) {
+                                    console.log(`processContentFields: Found bold text: ${match[1].trim()}`);
+                                    newContent += match[1].trim() + ". ";
+                                }
+
+                                console.log(`processContentFields: New content: ${newContent}`);
+                                data[key] = newContent; // Reemplazar el contenido original con el procesado
+                            } else if (typeof data[key] === 'object' || Array.isArray(data[key])) {
+                                console.log(`processContentFields: Descending into ${typeof data[key]} at path: ${currentPath.join('.')}`);
+                                processContentFields(data[key], currentPath); // Pasar la ruta actual
+                            }
+                        }
+                    } else if (Array.isArray(data)) {
+                        console.log(`processContentFields: Processing array at path: ${path.join('.')}`);
+                        data.forEach((item, index) => processContentFields(item, [...path, index])); // Pasar la ruta con el índice
+                    }
+                }
+
+                const sendMessageToChatbot = async (question, sectionId, jsonData) => {
+                    console.log("sendMessageToChatbot: jsonData received:", jsonData);
+
+                    // Crear una copia profunda del jsonData
+                    const jsonDataCopy = JSON.parse(JSON.stringify(jsonData));
+                    console.log("sendMessageToChatbot: Created deep copy of jsonData");
+
+                    console.log("sendMessageToChatbot: Calling processContentFields");
+                    processContentFields(jsonDataCopy); // Modificar la copia
+                    console.log("sendMessageToChatbot: processContentFields completed");
+                    console.log("sendMessageToChatbot: Processed jsonDataCopy:", jsonDataCopy);
+
+                    // Extraer sectionContent del jsonData *original*
+                    const sectionContent = jsonData.sections ? jsonData.sections[0]?.content || "" : ""; // Ajusta esto según tu estructura
+                    const markdownDescription = 'Descripción de la sección'; // No sé de dónde sacas esto, ¡ajusta según sea necesario!
+
+                    const message = `This question relates to ${sectionId}. This is the section content: ${sectionContent}. This is a description of the section: ${markdownDescription}. This is a summarized document: ${JSON.stringify(jsonDataCopy)}`;
+
+                    const newMessage = {
+                        text: question,
+                        sender: 'user'
+                    };
+                    setChatMessages([...chatMessages, newMessage]);
+
+                    try {
+                        const response = await fetch(WEBHOOK_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                question: question,
+                                section: currentSection,
+                                sectionContent: sectionContent, // Usa el sectionContent del jsonData original
+                                markdownDescription: markdownDescription,
+                                jsonData: jsonDataCopy, // Usa jsonDataCopy (el resumido)
+                                message: message
+                            }),
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        const chatbotResponse = data[0].response;
+
+                        const newChatbotMessage = {
+                            text: chatbotResponse,
+                            sender: 'chatbot'
+                        };
+                        setChatMessages([...chatMessages, newChatbotMessage]);
+
+                    } catch (error) {
+                        console.error("Error sending message to chatbot:", error);
+                        const newErrorMessage = {
+                            text: 'Error communicating with chatbot.',
+                            sender: 'chatbot'
+                        };
+                        setChatMessages([...chatMessages, newErrorMessage]);
+
+                    } finally {
+
+                        const chatMessagesDiv = document.getElementById('chatMessages');
+                        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+                    }
+                };
+
+                const handleSendMessage = () => {
+                    const chatInput = document.getElementById('chatInput');
+                    const question = chatInput.value.trim();
+                    if (question) {
+                        const sectionId = currentSection ? currentSection.title : 'general';
+                        const jsonData = window.currentFormData;
+                        sendMessageToChatbot(question, sectionId, currentSectionContent, markdownContent, jsonData);
+                        chatInput.value = '';
+
+                    }
+                };
+
+                const handleInfoClick = async (formData) => {
+                    setIsLoading(true);
+                    await toggleInfoSidebar(formData.title);
+                    setCurrentSectionContent(formData.content);
+                    setCurrentSection(formData);
+                    setIsLoading(false);
+                };
+
+                const handleChatbotClick = async (formData) => {
+                    setCurrentSectionContent(formData.content);
+                    setCurrentSection(formData);
+                    setShouldOpenChatbot(true);
+                }
+
+                React.useEffect(() => {
+                    if (shouldOpenChatbot) {
+                        toggleChatbotSidebar();
+                        setShouldOpenChatbot(false);
+                    }
+                }, [shouldOpenChatbot]);
+
+
+                return (
+                    <div className="array-container">
+                        {props.items && props.items.length > 0 && props.items.map((element, index) => {
+                            const path = [...props.idSchema.$id.split("_"), index];
+                            const sanitizedPath = getSanitizedPath(path);
+                            const elementId = generateIdFromPath(["root", "sections", index]);
+                            const isSection = props.schema.title === "Sections";
+                            const isList = props.schema.title === "Lists";
+                            const isItem = !isSection && !isList;
+
+                            const formData = element.children.props.formData || {};
+                            const isEditing = editingStates[index];
+
+                            return (
+                                <div
+                                    key={index}
+                                    id={elementId}
+                                    className="array-item strudol-section section scroll-target"
+                                >
+                                    {isSection ? (
+                                        <SectionRenderer
+                                            element={element}
+                                            index={index}
+                                            isEditing={isEditing}
+                                            setIsEditing={setIsEditing}
+                                            handleInfoClick={handleInfoClick}
+                                            handleChatbotClick={handleChatbotClick}
+                                            formData={formData}
+                                            getSanitizedPath={getSanitizedPath}
+                                            path={path}
+                                        />
+                                    ) : (
+                                        <div className="item-container">
+                                            <div className="item-edit-wrapper">
+                                                {element.children}
+                                            </div>
+                                            <div className="item-buttons">
+                                                {isItem && (
+                                                    <ItemButtons
+                                                        index={index}
+                                                        items={props.items}
+                                                        element={element}
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                        <div ref={infoSidebarRef} id="infoSidebar"
+                            className={`info-sidebar ${infoVisible ? 'open' : ''}`}>
+                            <button className="close-btn" onClick={() => setInfoVisible(false)}>×</button>
+                            <div className="info-content"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(markdownContent) }}>
+                            </div>
+                        </div>
+
+                        <div ref={chatbotSidebarRef} id="chatbotSidebar" className={`chatbot-sidebar ${chatbotVisible ? 'open' : ''}`}>
+                            <div className="chatbot-header">
+                                <h5>Chatbot</h5>
+                                <button id="closeChatbotButton" className="btn btn-secondary btn-sm" onClick={toggleChatbotSidebar}>Close</button>
+                            </div>
+                            <div id="chatMessages" className="chat-messages">
+                                {chatMessages.map((msg, index) => (
+                                    <div key={index} className={`message ${msg.sender}`}>
+                                        {msg.text}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="chat-input-area">
+                                <input type="text" id="chatInput" className="chat-input" placeholder="Type your question..." />
+                                <button id="sendButton" className="chat-button" onClick={handleSendMessage} disabled={!currentSection}>Send</button>
+                            </div>
+                        </div>
+                        {props.canAdd && (
+                            <div className="add-new-container">
+                                <button className="btn btn-sm btn-secondary" onClick={props.onAddClick}
+                                    type="button">
+                                    Add new {props.schema.title.slice(0, -1)}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            function exportFiles() {
+                if (!window.currentFormData || Object.keys(window.currentFormData).length === 0) {
+                    alert("No data loaded for export.");
+                    return;
+                }
+
+                const timestamp = new Date()
+                    .toISOString()
+                    .replace("T", "-")
+                    .replace(/\..+/, "")
+                    .replace(/:/g, "-");
+
+                let baseFileName = window.currentFileName.replace(/-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/, "");
+
+                const fileName = `${baseFileName}-${timestamp}.json`;
+
+                const jsonBlob = new Blob([JSON.stringify(window.currentFormData, null, 2)], {
+                    type: "application/json"
+                });
+                const jsonUrl = URL.createObjectURL(jsonBlob);
+                const jsonLink = document.createElement("a");
+                jsonLink.href = jsonUrl;
+                jsonLink.download = fileName;
+                document.body.appendChild(jsonLink);
+                jsonLink.click();
+                document.body.removeChild(jsonLink);
+            }
+
+            function extractAllTags(formData) {
+                const allTags = new Set();
+
+                // Si no hay datos o secciones, devolver un conjunto vacío
+                if (!formData || !formData.sections) return allTags;
+
+                formData.sections.forEach(section => {
+                    // Añadir etiquetas de sección
+                    if (section.tags) {
+                        section.tags.split(',').forEach(tag => {
+                            allTags.add(tag.trim());
+                        });
+                    }
+
+                    // Procesar las listas
+                    if (section.lists && Array.isArray(section.lists)) {
+                        section.lists.forEach(list => {
+                            // Procesar los ítems de la lista
+                            if (list.items && Array.isArray(list.items)) {
+                                list.items.forEach(item => {
+                                    if (item.tags) {
+                                        item.tags.split(',').forEach(tag => {
+                                            allTags.add(tag.trim());
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+
+                // Eliminar cualquier etiqueta vacía
+                allTags.delete('');
+
+                return Array.from(allTags).sort();
+            }
+
+            function renderTagFilters(tags) {
+                const filterContainer = document.getElementById('tag-filters');
+                filterContainer.innerHTML = '';
+
+                if (!tags || tags.length === 0) return;
+
+                // Botón para mostrar todo
+                const showAllBtn = document.createElement('button');
+                showAllBtn.textContent = 'Show All';
+                showAllBtn.className = 'btn btn-sm btn-outline-secondary m-2 active';
+                showAllBtn.dataset.tag = 'all';
+                filterContainer.appendChild(showAllBtn);
+
+                // Crear un botón para cada etiqueta
+                tags.forEach(tag => {
+                    const tagButton = document.createElement('button');
+                    tagButton.textContent = tag;
+                    tagButton.className = 'btn badge bg-secondary m-1';
+                    tagButton.dataset.tag = tag;
+                    filterContainer.appendChild(tagButton);
+                });
+
+                // Añadir event listeners a los botones
+                const allButtons = filterContainer.querySelectorAll('button');
+                allButtons.forEach(button => {
+                    button.addEventListener('click', handleTagFilterClick);
+                });
+            }
+
+            window.activeTagFilters = ['all'];
+
+            function handleTagFilterClick(event) {
+                const clickedTag = event.target.dataset.tag;
+                const allButtons = document.querySelectorAll('#tag-filters button');
+
+                // Si se hace clic en "Show All", desactivar todos los demás filtros
+                if (clickedTag === 'all') {
+                    window.activeTagFilters = ['all'];
+                    allButtons.forEach(btn => {
+                        btn.classList.remove('active');
+                        if (btn.dataset.tag === 'all') {
+                            btn.classList.add('active');
+                        }
+                    });
+                } else {
+                    // Si hay algún otro filtro activo, quitar "Show All"
+                    const allIndex = window.activeTagFilters.indexOf('all');
+                    if (allIndex > -1) {
+                        window.activeTagFilters.splice(allIndex, 1);
+                        allButtons.forEach(btn => {
+                            if (btn.dataset.tag === 'all') {
+                                btn.classList.remove('active');
+                            }
+                        });
+                    }
+
+                    // Alternar el estado del filtro actual
+                    const tagIndex = window.activeTagFilters.indexOf(clickedTag);
+                    if (tagIndex > -1) {
+                        // Quitar la etiqueta si ya está activa
+                        window.activeTagFilters.splice(tagIndex, 1);
+                        event.target.classList.remove('active');
+                    } else {
+                        // Añadir la etiqueta si no está activa
+                        window.activeTagFilters.push(clickedTag);
+                        event.target.classList.add('active');
+                    }
+
+                    // Si no hay filtros activos, activar "Show All"
+                    if (window.activeTagFilters.length === 0) {
+                        window.activeTagFilters = ['all'];
+                        allButtons.forEach(btn => {
+                            if (btn.dataset.tag === 'all') {
+                                btn.classList.add('active');
+                            }
+                        });
+                    }
+                }
+
+                // Aplicar los filtros
+                applyTagFilters();
+            }
+
+            function applyTagFilters() {
+                if (!window.currentFormData || !window.currentFormData.sections) return;
+
+                const showAll = window.activeTagFilters.includes('all');
+                const sections = document.querySelectorAll('.strudol-section');
+
+                sections.forEach((section, index) => {
+                    const sectionData = window.currentFormData.sections[index];
+                    if (!sectionData) return;
+
+                    let shouldShow = showAll;
+
+                    if (!showAll) {
+                        // Verificar etiquetas de la sección
+                        if (sectionData.tags) {
+                            const sectionTags = sectionData.tags.split(',').map(tag => tag.trim());
+                            shouldShow = sectionTags.some(tag => window.activeTagFilters.includes(tag));
+                        }
+
+                        // Verificar etiquetas en los ítems de las listas
+                        if (!shouldShow && sectionData.lists && Array.isArray(sectionData.lists)) {
+                            for (const list of sectionData.lists) {
+                                if (list.items && Array.isArray(list.items)) {
+                                    for (const item of list.items) {
+                                        if (item.tags) {
+                                            const itemTags = item.tags.split(',').map(tag => tag.trim());
+                                            if (itemTags.some(tag => window.activeTagFilters.includes(tag))) {
+                                                shouldShow = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (shouldShow) break;
+                            }
+                        }
+                    }
+
+                    section.style.display = shouldShow ? 'block' : 'none';
+                });
+
+                // Actualizar los enlaces de la barra lateral
+                updateSidebarLinksVisibility();
+            }
+
+            function updateSidebarLinksVisibility() {
+                const sectionLinks = document.querySelectorAll('#sections-list a');
+                const sections = document.querySelectorAll('.strudol-section');
+
+                sections.forEach((section, index) => {
+                    const isVisible = section.style.display !== 'none';
+                    if (sectionLinks[index]) {
+                        sectionLinks[index].style.display = isVisible ? 'block' : 'none';
+                    }
+                });
+            }
+
+            function renderForm(formData = {}) {
+                window.currentFormData = formData;
+                ReactDOM.render(
+                    React.createElement(JSONSchemaForm, {
+                        schema: schema,
+                        uiSchema: uiSchema,
+                        formData: formData,
+                        ArrayFieldTemplate: ArrayFieldTemplate,
+                        ObjectFieldTemplate: CollapsibleObjectFieldTemplate,
+                        widgets: widgets,
+                        fields: {},
+                        showErrorList: false,
+                        liveValidate: true,
+                        onChange: ({ formData }) => {
+                            console.log("Form updated:", formData);
+                            window.currentFormData = formData;
+                            updateSidebarLinks(formData.sections);
+                            const allTags = extractAllTags(formData);
+                            renderTagFilters(allTags);
+                        },
+                        FieldTemplate: ({ id, classNames, children }) => {
+                            const fieldName = id.split("_").pop();
+                            const iconMap = {
+                                title: "bi-box",
+                                content: "bi-file-text",
+                                tags: "bi-tag",
+                                lists: "bi-list",
+                                itemType: "bi-list",
+                                name: "bi-box"
+                            };
+                            return React.createElement(
+                                "div",
+                                { className: classNames + " form-group align-items-center row", "data-field-name": fieldName },
+                                React.createElement(
+                                    "div",
+                                    { className: "col-auto" },
+                                    React.createElement("i", {
+                                        className: `bi ${iconMap[fieldName] || ""}`,
+                                        style: { marginRight: "10px", fontSize: "1.2rem", color: "gray" }
+                                    })
+                                ),
+                                React.createElement(
+                                    "div",
+                                    { className: "col" },
+                                    children
+                                )
+                            );
+                        }
+                    }),
+                    document.getElementById("form-content")
+                );
+                updateSidebarLinks(formData.sections);
+
+                // Inicializar los filtros de etiquetas
+                const allTags = extractAllTags(formData);
+                renderTagFilters(allTags);
+
+                // Reiniciar los filtros activos
+                window.activeTagFilters = ['all'];
+            }
+
+            const lodashScript = document.createElement("script");
+            lodashScript.src = "https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js";
+            document.head.appendChild(lodashScript);
+
+            function highlightSearch(term) {
+                const sectionsContainer = document.getElementById("form-content");
+                const instance = new Mark(sectionsContainer);
+                instance.unmark();
+                if (term) {
+                    instance.mark(term, { separateWordSearch: false });
+                }
+            }
+
+            function filterSections(searchTerm) {
+                if (!window.currentFormData || !window.currentFormData.sections) return;
+
+                const filteredSections = _.filter(window.currentFormData.sections, (section) =>
+                    section.title.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+
+                updateSidebarLinks(filteredSections);
+                highlightSearch(searchTerm);
+            }
+
+            function updateSidebarLinks(sections) {
+                const sectionsList = document.getElementById("sections-list");
+                sectionsList.innerHTML = "";
+
+                if (sections && Array.isArray(sections)) {
+                    sections.forEach((section, index) => {
+                        const sectionId = generateIdFromPath(["root", "sections", index]);
+                        const sectionLink = document.createElement("a");
+                        sectionLink.href = `#${sectionId}`;
+                        sectionLink.textContent = section.title || `Section ${index + 1}`;
+                        sectionLink.classList.add("text-dark", "text-decoration-none", "d-block", "mb-2");
+                        sectionsList.appendChild(sectionLink);
+                    });
+                }
+            }
+
+            document.getElementById("searchInput").addEventListener("input", (event) => {
+                const searchTerm = event.target.value;
+                filterSections(searchTerm);
+            });
+
+            document.getElementById('toggleSidebar').addEventListener('click', function () {
+                let sidebar = document.getElementById('sidebar');
+                let mainContent = document.getElementById('main-content');
+
+                if (sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.remove('collapsed');
+                    mainContent.classList.remove('expanded');
+                } else {
+                    sidebar.classList.add('collapsed');
+                    mainContent.classList.add('expanded');
+                }
+
+            });
+
+            document.getElementById("exportButton").addEventListener("click", exportFiles);
+
+            function addTargetBlankToLinks(html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const links = doc.querySelectorAll('a');
+
+                links.forEach(link => {
+                    link.setAttribute('target', '_blank');
+                    // For security, add rel="noopener noreferrer" to prevent potential exploits
+                    link.setAttribute('rel', 'noopener noreferrer');
+                });
+
+                return doc.body.innerHTML;
+
+            }
+
+            function renderMarkdown(markdownContent) {
+                const rawHTML = marked.parse(markdownContent);
+                const withTargetBlank = addTargetBlankToLinks(rawHTML);
+                const sanitizedHTML = DOMPurify.sanitize(withTargetBlank, {
+                    USE_PROFILES: { html: true },
+                    ADD_ATTR: ['target', 'rel'] // Allow these attributes to pass through sanitization
+                });
+                return sanitizedHTML;
+            }
+
+            renderForm();
+
+
+
+
+
+
+
+        } else {
+            console.error("Required libraries not loaded properly.");
+        }
+    </script>
+</body>
+
+</html>
