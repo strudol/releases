@@ -516,7 +516,6 @@
     <script src="https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/uuid@9.0.1/dist/umd/uuidv4.min.js"></script>
     
     <!-- Export libraries -->
     <script src="https://cdn.jsdelivr.net/npm/file-saver/dist/FileSaver.min.js"></script>
@@ -524,11 +523,12 @@
     <script src="https://cdn.jsdelivr.net/npm/docx@8.0.4/build/index.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
+    <!-- Add UUID library implementation -->
     <script>
         // Add UUID library implementation
         !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t="undefined"!=typeof globalThis?globalThis:t||self).uuidv4=e()}(this,(function(){"use strict";var t="undefined"!=typeof crypto&&crypto.getRandomValues&&crypto.getRandomValues.bind(crypto)||"undefined"!=typeof msCrypto&&"function"==typeof msCrypto.getRandomValues&&msCrypto.getRandomValues.bind(msCrypto),e=new Uint8Array(16);function o(){if(!t)throw new Error("crypto.getRandomValues() not supported. See https://github.com/uuidjs/uuid#getrandomvalues-not-supported");return t(e)}var n=/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i;function r(t){return"string"==typeof t&&n.test(t)}for(var i=[],f=0;f<256;++f)i.push((f+256).toString(16).substr(1));return function(t,e,n){var f=(t=t||{}).random||(t.rng||o)();if(f[6]=15&f[6]|64,f[8]=63&f[8]|128,e){n=n||0;for(var u=0;u<16;++u)e[n+u]=f[u];return e}return function(t){var e=arguments.length>1&&void 0!==arguments[1]?arguments[1]:0,o=(i[t[e+0]]+i[t[e+1]]+i[t[e+2]]+i[t[e+3]]+"-"+i[t[e+4]]+i[t[e+5]]+"-"+i[t[e+6]]+i[t[e+7]]+"-"+i[t[e+8]]+i[t[e+9]]+"-"+i[t[e+10]]+i[t[e+11]]+i[t[e+12]]+i[t[e+13]]+i[t[e+14]]+i[t[e+15]]).toLowerCase();if(!r(o))throw TypeError("Stringified UUID is invalid");return o}(f)}}));
     </script>
-
+    
     <script type="text/babel" data-presets="react">
     // Constants
     const WEBHOOK_URL = "https://n8n.lucascervera.com/webhook/strubasechatbot";
@@ -552,17 +552,17 @@
      * Utility functions for the application
      */
     const Utils = {
-// ID generation - always use UUID or fallback to random string
-generateItemId() {
-    // Check if uuidv4 is available
-    if (typeof uuidv4 !== 'undefined') {
-        return uuidv4();
-    } else {
-        // Fallback implementation for UUID
-        return 'id-' + Math.random().toString(36).substring(2, 15) + 
-               Math.random().toString(36).substring(2, 15);
-    }
-},
+        // ID generation - always use UUID or fallback to random string
+        generateItemId() {
+            // Check if uuidv4 is available
+            if (typeof uuidv4 !== 'undefined') {
+                return uuidv4();
+            } else {
+                // Fallback implementation for UUID
+                return 'id-' + Math.random().toString(36).substring(2, 15) + 
+                      Math.random().toString(36).substring(2, 15);
+            }
+        },
         
         // Extract type from tags
         getTypeFromTags(tags) {
@@ -695,39 +695,6 @@ generateItemId() {
                 
                 parent.items.push(newItem);
                 return true;
-            }
-            
-            return false;
-        },
-        
-        // Update an existing item
-        updateItem(items, updatedItem) {
-            if (!items || !Array.isArray(items) || !updatedItem || !updatedItem.id) {
-                return false;
-            }
-
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].id === updatedItem.id) {
-                    // Store any children items from the existing item
-                    const children = items[i].items || [];
-                    
-                    // Create a new item object with updated properties
-                    items[i] = {...updatedItem};
-                    
-                    // Preserve children if not provided in the update
-                    if (!items[i].items || items[i].items.length === 0) {
-                        items[i].items = children;
-                    }
-                    
-                    return true;
-                }
-                
-                // Recursively search in child items
-                if (items[i].items && items[i].items.length > 0) {
-                    if (this.updateItem(items[i].items, updatedItem)) {
-                        return true;
-                    }
-                }
             }
             
             return false;
@@ -1008,7 +975,7 @@ generateItemId() {
             const sanitizedTitle = itemTitle
                 .replace(/[^a-zA-Z0-9]+/g, "_")
                 .replace(/^_|_$/g, "");
-            return `info/docs/pages/sections/${sanitizedTitle}.md`;
+            return `info/${sanitizedTitle}.md`;
         },
         
         // Update related items in info panel
@@ -1887,17 +1854,52 @@ generateItemId() {
                 
                 const sessionId = `strudol-session-${Date.now()}`;
                 
-                const payload = {
-                    question: message,
-                    sectionId: currentItem.id,
-                    sectionTitle: currentItem.title,
-                    sectionContent: currentItem.content || "No content available.",
-                    context_string: `This question is about the ${currentItem.title} item of the document.
-                        Content: ${currentItem.content?.substring(0, 500) || "No content"}.
-                        The user is asking: ${message}`,
-                    context: { items },
-                    sessionId
-                };
+// Create a complete representation of the current item and its subitems
+const prepareItemWithSubitems = (item) => {
+    if (!item) return null;
+    
+    // Create a clean copy to avoid circular references
+    const cleanItem = {
+        id: item.id,
+        title: item.title,
+        content: item.content || "",
+        tags: item.tags || "",
+        items: []
+    };
+    
+    // Recursively add all subitems
+    if (item.items && Array.isArray(item.items)) {
+        cleanItem.items = item.items.map(subitem => prepareItemWithSubitems(subitem));
+    }
+    
+    return cleanItem;
+};
+
+// Get the complete current item with all its subitems
+const completeItem = prepareItemWithSubitems(currentItem);
+
+// Convert to JSON string for sectionContent
+const completeItemJSON = JSON.stringify(completeItem, null, 2);
+
+const payload = {
+    question: message,
+    sectionId: currentItem.id,
+    sectionTitle: currentItem.title,
+    // Include the complete JSON representation of current item and all subitems
+    sectionContent: completeItemJSON,
+    context_string: `This question is about the ${currentItem.title} item of the document.
+        The user is asking: ${message}`,
+    // Include full items context 
+    context: { 
+        items,
+        currentItem: completeItem
+    },
+    sessionId
+};
+
+console.log("Sending payload to webhook:", payload); // Log for debugging
+                
+                console.log("Sending payload to webhook:", payload); // Log the payload for debugging
                 
                 const response = await fetch(WEBHOOK_URL, {
                     method: 'POST',
